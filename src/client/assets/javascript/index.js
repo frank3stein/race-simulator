@@ -42,7 +42,7 @@ async function onPageLoad() {
 					);
 					const html = renderTrackCards(tracks);
 					renderAt("#tracks", html);
-				}),
+				}).catch(err => console.error("GetTracks error: ", err)),
 			getRacers()
 				.then((racers) => racers.json())
 				.then((racers) => {
@@ -54,7 +54,7 @@ async function onPageLoad() {
 					);
 					const html = renderRacerCars(racers);
 					renderAt("#racers", html);
-				}),
+				}).catch(err => console.error("GetRacers error: ", err)),
 		]);
 	}
 
@@ -65,34 +65,66 @@ function setupClickHandlers() {
 	document.addEventListener(
 		"click",
 		function (event) {
-			const { target } = event;
+			// I am leaving this part as comments, the reason I implemented this was, in the code provided, the selection occurs if you only click on the specific parts of the buttons. The reason for that since there are several elements in the clickable race name and driver name, you have to click on the element that has the class.
+
+			// I tried to solve this issue by using the path, it gives an array of elements that the event bubbles through. You can check if the element with the class we are looking for was visited or not. Since bubbling occurs from inside to outside, we are more likely to never run the loop fully and find the element that we want. This in theory should enable you to click on any area on the names
+
+
+			// 	const { target } = event;
+
+			// 	// Submit create race form
+			// 	if (target.matches("#submit-create-race")) {
+			// 		event.preventDefault();
+			// 		race();
+			// 		return;
+			// 	}
+			// 	// Handle acceleration click
+			// 	if (target.matches("#gas-peddle")) {
+			// 		handleAccelerate(store.race_id - 1);
+			// 	}
+
+			// 	for (let i = 0; i < event.path.length; i++) {
+			// 		if (event.path[i].matches === undefined) {
+			// 			return
+			// 		}
+			// 		if (event.path[i].matches([".card.track"])) {
+			// 			handleSelectTrack(event.path[i]);
+			// 			break;
+			// 		}
+
+			// 		// Podracer form field
+			// 		if (event.path[i].matches(".card.podracer")) {
+			// 			handleSelectPodRacer(event.path[i]);
+			// 			break;
+			// 		}
+			// 	}
+			// },
+
+			const { target } = event
+			console.log("Event path", event.path)
+			// Race track form field
+			if (target.matches('.card.track')) {
+				handleSelectTrack(target)
+			}
+
+			// Podracer form field
+			if (target.matches('.card.podracer')) {
+				handleSelectPodRacer(target)
+			}
 
 			// Submit create race form
-			if (target.matches("#submit-create-race")) {
-				event.preventDefault();
-				race();
-				return;
+			if (target.matches('#submit-create-race')) {
+				event.preventDefault()
+
+				// start race
+				handleCreateRace()
 			}
+
 			// Handle acceleration click
-			if (target.matches("#gas-peddle")) {
-				handleAccelerate(store.race_id - 1);
+			if (target.matches('#gas-peddle')) {
+				handleAccelerate(store.race_id - 1) // instead of target, race id is passed in
 			}
 
-			for (let i = 0; i < event.path.length; i++) {
-				if (event.path[i].matches === undefined) {
-					return
-				}
-				if (event.path[i].matches([".card.track"])) {
-					handleSelectTrack(event.path[i]);
-					break;
-				}
-
-				// Podracer form field
-				if (event.path[i].matches(".card.podracer")) {
-					handleSelectPodRacer(event.path[i]);
-					break;
-				}
-			}
 		},
 		false
 	);
@@ -102,20 +134,24 @@ async function delay(ms) {
 	return await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function race() {
+async function handleCreateRace() {
 	const { player_id, track_id } = store;
 	renderAt("#race", renderRaceStartView(track_id));
 
+	try {
+		const newRace = await createRace(player_id, track_id)
+		updateStore({
+			race_id: +newRace.ID
+		}, console.log)
+
+		await runCountdown(3)
+		await startRace(store.race_id - 1) // there is a bug, since the race id starts from 1 and it checks the race by using, races[race_id], it is out of bounds
+		await runRace(store.race_id - 1)
+	} catch (err) {
+		console.error(err)
+	}
 
 
-	const newRace = await createRace(player_id, track_id)
-	updateStore({
-		race_id: +newRace.ID
-	}, console.log)
-
-	await runCountdown(3)
-	await startRace(store.race_id - 1) // there is a bug, since the race id starts from 1 and it checks the race by using, races[race_id], it is out of bounds
-	await runRace(store.race_id - 1)
 }
 async function runCountdown(timer) {
 	await delay(1000);
@@ -138,7 +174,8 @@ async function runCountdown(timer) {
 async function runRace(raceID) {
 	return new Promise((resolve) => {
 		const showMustGoOn = setInterval(async () => {
-			const raceStats = await getRace(raceID).then(res => res.json()).then(res => res)
+			const raceStats = await getRace(raceID)
+
 			if (raceStats.status === 'in-progress') {
 				renderAt('#leaderBoard', raceProgress(raceStats.positions))
 			}
@@ -193,11 +230,16 @@ function handleSelectTrack(target) {
 
 async function handleAccelerate(id) {
 	console.log("accelerate button clicked ", id);
-	await accelerate(id)
+	try {
+
+		await accelerate(id)
+	} catch (err) {
+		console.error("Accelerate ", err)
+	}
 }
 
 function renderRacerCars(racers) {
-	if (!tracks.length) {
+	if (!racers.length) {
 		return `
 			<h4>Loading Racers...</4>
 		`;
@@ -363,24 +405,23 @@ function createRace(player_id, track_id) {
 		method: 'POST',
 		dataType: 'jsonp',
 		body: JSON.stringify(body)
-	}).then(res => res.json())
+	}).then(res => res.json()).catch(err => console.error("CreateRace ", err))
 }
 
 function getRace(id) {
-	return fetch(`${SERVER}/api/races/${id}`)
+	return fetch(`${SERVER}/api/races/${id}`).then(res => res.json()).catch(err => console.error("RaceStats: ", err))
 }
 
 function startRace(id) {
 	return fetch(`${SERVER}/api/races/${id}/start`, {
 		...defaultFetchOpts(),
 		method: "POST",
-		mode: "cors",
-	});
+	}).catch(err => console.error("StartRace ", err));
 }
 
 function accelerate(id) {
 	fetch(`${SERVER}/api/races/${id}/accelerate`, {
 		...defaultFetchOpts(),
 		method: 'POST'
-	})
+	}).catch(err => console.error("Accelerate ", err))
 }
