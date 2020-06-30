@@ -174,17 +174,21 @@ async function runCountdown(timer) {
 async function runRace(raceID) {
 	return new Promise((resolve) => {
 		const showMustGoOn = setInterval(async () => {
-			const raceStats = await getRace(raceID)
+			try {
+				const raceStats = await getRace(raceID)
 
-			if (raceStats.status === 'in-progress') {
-				renderAt('#leaderBoard', raceProgress(raceStats.positions))
-			}
-			if (raceStats.status === 'finished') {
-				clearInterval(showMustGoOn)
-				renderAt('#race', resultsView(raceStats.positions)) // to render the results view
-				resolve(raceStats) // resolve the promise
-			}
 
+				if (raceStats.status === 'in-progress') {
+					renderAt('#leaderBoard', raceProgress(raceStats.positions))
+				}
+				if (raceStats.status === 'finished') {
+					clearInterval(showMustGoOn)
+					renderAt('#race', resultsView(raceStats.positions)) // to render the results view
+					resolve(raceStats) // resolve the promise
+				}
+			} catch (err) {
+				console.error("raceStats error: ", err)
+			}
 		}, 500)
 	});
 }
@@ -388,11 +392,11 @@ function defaultFetchOpts() {
 
 
 function getTracks() {
-	return fetch(`${SERVER}/api/tracks`, { ...defaultFetchOpts() });
+	return fetch(`${SERVER}/api/tracks`, { ...defaultFetchOpts() }).catch(err => console.error("GetTracks error: ", err));;
 }
 
 function getRacers() {
-	return fetch(`${SERVER}/api/cars`, { ...defaultFetchOpts() });
+	return fetch(`${SERVER}/api/cars`, { ...defaultFetchOpts() }).catch(err => console.error("GetRacers error: ", err));
 }
 
 function createRace(player_id, track_id) {
